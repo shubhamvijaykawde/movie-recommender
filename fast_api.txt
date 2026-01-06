@@ -1,0 +1,8 @@
+uvicorn api:app --host 0.0.0.0 --port 8080 --reload
+
+
+http://localhost:8080/docs
+
+streamlit run app.py
+
+http://localhost:8501
