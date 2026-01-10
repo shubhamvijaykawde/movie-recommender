@@ -50,7 +50,7 @@ Frontend (Streamlit)  →  Backend (FastAPI)  →  Recommendation Engine
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/yourusername/llm-augmented-movie-recommender.git
+git clone https://github.com/shubhamvijaykawde/movie-recommender.git
 cd llm-augmented-movie-recommender
 
 # Install dependencies
@@ -59,9 +59,9 @@ pip install -r requirements.txt
 ```
 
 ### 2. Generate Artifacts
-
+run : python etl_offline.py
 ```bash
-python -c "from etl import precompute_artifacts; precompute_artifacts()"
+python -c "from offline_etl import precompute_artifacts; precompute_artifacts()"
 ```
 
 This creates the required pickle files (`data.pkl`, `desc_embeddings.pkl`, `meta_sim.pkl`, etc.)
@@ -86,12 +86,12 @@ Update `API_URL` in `app.py` to point to your backend.
 
 ### `POST /recommend/by-title`
 Get similar movies based on a title.
-
-```bash
-curl -X POST http://localhost:8080/recommend/by-title \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Prometheus", "top_n": 5, "alpha": 0.45}'
-```
+POST /recommend/by-title
+{
+  "title": "Prometheus",
+  "top_n": 5,
+  "alpha": 0.45
+}
 
 **Parameters:**
 - `title` (required): Movie title
@@ -100,12 +100,11 @@ curl -X POST http://localhost:8080/recommend/by-title \
 
 ### `POST /recommend/by-query`
 Natural language movie search.
-
-```bash
-curl -X POST http://localhost:8080/recommend/by-query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "dark philosophical science fiction", "top_n": 5}'
-```
+POST /recommend/by-query
+{
+  "query": "psychological thrillers with plot twists",
+  "top_n": 5
+}
 
 ### `GET /health`
 Health check endpoint.
@@ -140,6 +139,7 @@ Health check endpoint.
 ```
 ├── api.py                 # FastAPI backend
 ├── etl.py                 # Data processing pipeline
+├── offline_etl.py         # Local embedding precomputation
 ├── app.py                 # Streamlit frontend
 ├── Fast_requirements.txt  # Backend dependencies
 ├── requirements.txt       # Frontend dependencies
@@ -155,15 +155,11 @@ Health check endpoint.
 
 Optimized for free-tier deployment:
 
-- ✅ **Lazy Model Loading**: Model loads in background after startup
-- ✅ **Float32 Precision**: ~50% memory savings vs float64
-- ✅ **Pre-computed Similarities**: No runtime computation
-- ✅ **CPU-Only PyTorch**: Smaller footprint
-
-**Performance:**
-- Title recommendations: **<100ms**
-- Query recommendations: **~500ms**
-- Memory usage: **~250-350MB** (within 512MB limit)
+Title recommendations: <100ms
+Query recommendations: ~500ms
+Memory usage: ~250MB (safe for Render free-tier)
+Float32 precision saves ~50% memory
+Precomputed embeddings & TF-IDF matrices → no runtime heavy computation
 
 ---
 
@@ -172,19 +168,19 @@ Optimized for free-tier deployment:
 ```python
 import requests
 
-# Search by title
-response = requests.post(
+# By title
+resp = requests.post(
     "http://localhost:8080/recommend/by-title",
     json={"title": "The Matrix", "top_n": 5, "alpha": 0.5}
 )
-print(response.json()["recommendations"])
+print(resp.json()["recommendations"])
 
-# Natural language search
-response = requests.post(
+# Natural language query
+resp = requests.post(
     "http://localhost:8080/recommend/by-query",
-    json={"query": "psychological thrillers with plot twists", "top_n": 5}
+    json={"query": "dark sci-fi thrillers", "top_n": 5}
 )
-print(response.json()["recommendations"])
+print(resp.json()["recommendations"])
 ```
 
 ---
