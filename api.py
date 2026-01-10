@@ -3,12 +3,11 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
 
 from etl import run_etl_pipeline
 
 # -----------------------------
-# FastAPI app
+# Initialize API
 # -----------------------------
 app = FastAPI(
     title="Movie Recommendation API",
@@ -17,20 +16,21 @@ app = FastAPI(
 )
 
 # -----------------------------
-# Load artifacts ONCE at startup
+# Load artifacts ONCE
 # -----------------------------
 artifacts = run_etl_pipeline()
 
 df = artifacts["data"]
 meta_sim = artifacts["meta_sim"]
-desc_sim = artifacts["desc_sim"]
 desc_embeddings = artifacts["desc_embeddings"]
 
-title_to_idx = {t.lower(): i for i, t in enumerate(df["Title"].tolist())}
-query_model = SentenceTransformer("all-MiniLM-L6-v2")  # small, fast
+title_to_idx = {
+    title.lower(): idx
+    for idx, title in enumerate(df["Title"].tolist())
+}
 
 # -----------------------------
-# Request models
+# Request schemas
 # -----------------------------
 class TitleRequest(BaseModel):
     title: str
@@ -42,37 +42,66 @@ class QueryRequest(BaseModel):
     top_n: int = 6
 
 # -----------------------------
-# Helper
+# Helper: Hybrid recommendation
 # -----------------------------
 def hybrid_recommend(idx: int, alpha: float, top_n: int):
-    hybrid = alpha * meta_sim + (1 - alpha) * desc_sim
-    sims = hybrid[idx]
-    top_idx = np.argsort(sims)[::-1]
+    # compute embedding similarity ONLY for one movie
+    emb_sim = cosine_similarity(
+        desc_embeddings[idx].reshape(1, -1),
+        desc_embeddings
+    )[0]
+
+    hybrid_sim = alpha * meta_sim[idx] + (1 - alpha) * emb_sim
+
+    top_idx = np.argsort(hybrid_sim)[::-1]
     top_idx = [i for i in top_idx if i != idx][:top_n]
+
     return df.iloc[top_idx]
 
 # -----------------------------
-# Endpoints
+# API Endpoints
 # -----------------------------
 @app.post("/recommend/by-title")
 def recommend_by_title(req: TitleRequest):
     key = req.title.strip().lower()
+
     if key not in title_to_idx:
         raise HTTPException(status_code=404, detail="Movie title not found")
+
     idx = title_to_idx[key]
     recs = hybrid_recommend(idx, req.alpha, req.top_n)
+
     return {
         "source_movie": df.loc[idx, "Title"],
-        "recommendations": recs[["Title", "Genre", "Rating", "Votes", "Description"]].to_dict(orient="records")
+        "recommendations": recs[
+            ["Title", "Genre", "Rating", "Votes", "Description"]
+        ].to_dict(orient="records")
     }
 
 @app.post("/recommend/by-query")
 def recommend_by_query(req: QueryRequest):
-    q_emb = query_model.encode([req.query])
+    # semantic search only
+    q_emb = cosine_similarity(
+        [req.query], [req.query]
+    )
+
+    q_emb = None  # placeholder for explanation clarity
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    q_emb = model.encode([req.query])
+
     sims = cosine_similarity(q_emb, desc_embeddings)[0]
     top_idx = np.argsort(sims)[::-1][:req.top_n]
+
     recs = df.iloc[top_idx]
+
     return {
         "query": req.query,
-        "recommendations": recs[["Title", "Genre", "Rating", "Votes", "Description"]].to_dict(orient="records")
+        "recommendations": recs[
+            ["Title", "Genre", "Rating", "Votes", "Description"]
+        ].to_dict(orient="records")
     }
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
