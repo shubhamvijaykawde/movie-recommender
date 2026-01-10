@@ -3,7 +3,7 @@ services:
     name: movie-recommender-api
     env: python
     plan: free
-    buildCommand: pip install -r Fast_requirements.txt
+    buildCommand: pip install --upgrade pip && pip install torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r Fast_requirements.txt
     startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
