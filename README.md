@@ -1,4 +1,4 @@
-🎬 LLM-Augmented Movie Recommendation System
+### 🎬 LLM-Augmented Movie Recommendation System
 
 A hybrid movie recommendation system combining metadata-based filtering and semantic search using sentence transformers. Deployable on free-tier cloud services with optimized memory usage.
 
