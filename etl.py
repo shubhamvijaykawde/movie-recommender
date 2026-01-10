@@ -1,6 +1,7 @@
 # etl.py
 import pandas as pd
 import pickle
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
@@ -58,15 +59,18 @@ def precompute_artifacts(csv_path="IMDB-Movie-Data.csv"):
         stop_words="english"
     )
     tfidf_matrix = tfidf_vectorizer.fit_transform(df["metadata"])
-    meta_sim = cosine_similarity(tfidf_matrix)
+    meta_sim = cosine_similarity(tfidf_matrix).astype(np.float32)  # Use float32 to save memory
 
     print("🔹 Computing description embeddings...")
     model = SentenceTransformer("all-MiniLM-L6-v2")
     desc_embeddings = model.encode(
         df["Description"].tolist(),
         batch_size=64,
-        show_progress_bar=True
+        show_progress_bar=True,
+        convert_to_numpy=True
     )
+    # Convert to float32 to save memory (saves ~50% space)
+    desc_embeddings = desc_embeddings.astype(np.float32)
 
     print("🔹 Saving artifacts...")
     with open("data.pkl", "wb") as f:
@@ -108,6 +112,15 @@ def load_artifacts():
     print("🔹 Loading desc_embeddings.pkl...")
     with open("desc_embeddings.pkl", "rb") as f:
         desc_embeddings = pickle.load(f)
+    
+    # Optimize memory: convert to float32 if float64 (saves ~50% memory)
+    if desc_embeddings.dtype == np.float64:
+        print("🔹 Converting desc_embeddings to float32 (memory optimization)...")
+        desc_embeddings = desc_embeddings.astype(np.float32)
+    
+    if meta_sim.dtype == np.float64:
+        print("🔹 Converting meta_sim to float32 (memory optimization)...")
+        meta_sim = meta_sim.astype(np.float32)
     
     print("✅ All artifacts loaded successfully!")
     return {

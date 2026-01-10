@@ -3,10 +3,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
+import os
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+import torch
 
 from etl import run_etl_pipeline
+
+# Memory optimizations for free tier (512MB limit)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Reduces memory usage
+torch.set_num_threads(1)  # Limit CPU threads to reduce memory
 
 # -----------------------------
 # Initialize API
@@ -38,10 +44,20 @@ df = artifacts["data"]
 meta_sim = artifacts["meta_sim"]
 desc_embeddings = artifacts["desc_embeddings"]
 
-# Load SentenceTransformer model ONCE (critical for memory optimization)
-print("🔹 Loading SentenceTransformer model...")
-sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
-print("✅ Model loaded successfully!")
+# Lazy load SentenceTransformer model (only when needed for query endpoint)
+# This saves ~100-200MB memory on startup for free tier
+sentence_model = None
+
+def get_sentence_model():
+    """Lazy load the SentenceTransformer model only when needed."""
+    global sentence_model
+    if sentence_model is None:
+        print("🔹 Loading SentenceTransformer model (lazy load)...")
+        with torch.no_grad():  # Disable gradients to save memory
+            sentence_model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+            sentence_model.eval()
+        print("✅ Model loaded successfully!")
+    return sentence_model
 
 title_to_idx = {
     title.lower(): idx
@@ -99,8 +115,14 @@ def recommend_by_title(req: TitleRequest):
 
 @app.post("/recommend/by-query")
 def recommend_by_query(req: QueryRequest):
-    # Use the pre-loaded model (no reload on each request)
-    q_emb = sentence_model.encode([req.query])
+    # Lazy load model on first use (saves memory on startup)
+    model = get_sentence_model()
+    # Encode with memory-efficient settings
+    with torch.no_grad():
+        q_emb = model.encode([req.query], convert_to_numpy=True, show_progress_bar=False)
+    # Ensure float32 for memory efficiency
+    if q_emb.dtype == np.float64:
+        q_emb = q_emb.astype(np.float32)
     sims = cosine_similarity(q_emb, desc_embeddings)[0]
     top_idx = np.argsort(sims)[::-1][:req.top_n]
 
