@@ -59,7 +59,7 @@ Installation & Usage
 Prerequisites: Python 3.11+, pip
 
 # Clone repository
-git clone https://github.com/yourusername/llm-augmented-movie-recommender.git
+git clone https://github.com/shubhamvijaykawde/movie-recommender.git
 cd llm-augmented-movie-recommender
 
 # Install backend dependencies
