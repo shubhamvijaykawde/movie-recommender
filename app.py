@@ -5,7 +5,7 @@ import requests
 # -------------------------
 # Config
 # -------------------------
-API_URL = "http://localhost:8080"  # Replace with deployed URL when live
+API_URL = "http://localhost:8080"  ## Replace with deployed URL when live
 
 st.set_page_config(layout="wide", page_title="LLM-aug Movie Recommender")
 st.title("LLM-Augmented Movie Recommender")
