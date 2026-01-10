@@ -1,30 +1,25 @@
 # etl.py
 import pandas as pd
-import numpy as np
-from sentence_transformers import SentenceTransformer
+import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
-
-# -------------------------
-# Extract
-# -------------------------
+# -----------------------------
+# 1. Extract
+# -----------------------------
 def extract_data(csv_path: str) -> pd.DataFrame:
-    return pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path)
+    return df
 
-
-# -------------------------
-# Transform
-# -------------------------
+# -----------------------------
+# 2. Transform
+# -----------------------------
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-
-    # Fix pandas FutureWarning (NO inplace)
-    df["Revenue (Millions)"] = df["Revenue (Millions)"].fillna(
-        df["Revenue (Millions)"].median()
-    )
-    df["Metascore"] = df["Metascore"].fillna(
-        df["Metascore"].median()
-    )
+    df["Revenue (Millions)"] = df["Revenue (Millions)"].fillna(df["Revenue (Millions)"].median())
+    df["Metascore"] = df["Metascore"].fillna(df["Metascore"].median())
 
     text_cols = ["Title", "Genre", "Description", "Director", "Actors"]
     for col in text_cols:
@@ -32,9 +27,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     df["Genre"] = df["Genre"].str.lower()
     df["Director"] = df["Director"].str.lower()
-
     return df
-
 
 def build_metadata_field(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -45,47 +38,76 @@ def build_metadata_field(df: pd.DataFrame) -> pd.DataFrame:
     )
     return df
 
-
-# -------------------------
-# Feature Engineering
-# -------------------------
-def build_tfidf_matrix(metadata_series):
-    vectorizer = TfidfVectorizer(
-        min_df=2,
-        ngram_range=(1, 2),
-        stop_words="english"
-    )
-    matrix = vectorizer.fit_transform(metadata_series)
-    return matrix, vectorizer
-
-
-def generate_description_embeddings(
-    descriptions,
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-):
-    model = SentenceTransformer(model_name, device="cpu")
-    embeddings = model.encode(
-        descriptions,
-        batch_size=32,
-        show_progress_bar=False
-    )
-    return embeddings
-
-
-# -------------------------
-# Orchestrator
-# -------------------------
-def run_etl_pipeline(csv_path: str):
-    df = extract_data(csv_path)
-    df = clean_data(df)
-    df = build_metadata_field(df)
-
-    tfidf_matrix, tfidf_vectorizer = build_tfidf_matrix(df["metadata"])
-    desc_embeddings = generate_description_embeddings(df["Description"].tolist())
-
+# -----------------------------
+# 3. Load (precomputed artifacts)
+# -----------------------------
+def load_artifacts():
+    """
+    Load precomputed artifacts (pickle files) for memory-efficient startup.
+    """
+    with open("data.pkl", "rb") as f:
+        df = pickle.load(f)
+    with open("tfidf_matrix.pkl", "rb") as f:
+        tfidf_matrix = pickle.load(f)
+    with open("tfidf_vectorizer.pkl", "rb") as f:
+        tfidf_vectorizer = pickle.load(f)
+    with open("meta_sim.pkl", "rb") as f:
+        meta_sim = pickle.load(f)
+    with open("desc_embeddings.pkl", "rb") as f:
+        desc_embeddings = pickle.load(f)
+    with open("desc_sim.pkl", "rb") as f:
+        desc_sim = pickle.load(f)
     return {
         "data": df,
         "tfidf_matrix": tfidf_matrix,
         "tfidf_vectorizer": tfidf_vectorizer,
-        "desc_embeddings": desc_embeddings
+        "meta_sim": meta_sim,
+        "desc_embeddings": desc_embeddings,
+        "desc_sim": desc_sim
     }
+
+# -----------------------------
+# 4. Precompute helper (run locally only)
+# -----------------------------
+def precompute_artifacts(csv_path="IMDB-Movie-Data.csv"):
+    """
+    Run locally to precompute embeddings and similarity matrices.
+    Save as .pkl files for Render deployment.
+    """
+    df = extract_data(csv_path)
+    df = clean_data(df)
+    df = build_metadata_field(df)
+
+    # TF-IDF
+    tfidf_vectorizer = TfidfVectorizer(min_df=2, ngram_range=(1,2), stop_words="english")
+    tfidf_matrix = tfidf_vectorizer.fit_transform(df["metadata"])
+    meta_sim = cosine_similarity(tfidf_matrix)
+
+    # Embeddings
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    desc_embeddings = model.encode(df["Description"].tolist(), batch_size=64, show_progress_bar=True)
+    desc_sim = cosine_similarity(desc_embeddings)
+
+    # Save all
+    with open("data.pkl", "wb") as f:
+        pickle.dump(df, f)
+    with open("tfidf_matrix.pkl", "wb") as f:
+        pickle.dump(tfidf_matrix, f)
+    with open("tfidf_vectorizer.pkl", "wb") as f:
+        pickle.dump(tfidf_vectorizer, f)
+    with open("meta_sim.pkl", "wb") as f:
+        pickle.dump(meta_sim, f)
+    with open("desc_embeddings.pkl", "wb") as f:
+        pickle.dump(desc_embeddings, f)
+    with open("desc_sim.pkl", "wb") as f:
+        pickle.dump(desc_sim, f)
+    print("✅ All artifacts precomputed and saved.")
+
+# -----------------------------
+# 5. ETL entrypoint for API
+# -----------------------------
+def run_etl_pipeline(csv_path=None):
+    """
+    Load precomputed artifacts for production (Render).
+    """
+    return load_artifacts()
