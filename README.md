@@ -51,7 +51,7 @@ Frontend (Streamlit)  →  Backend (FastAPI)  →  Recommendation Engine
 
 ```bash
 git clone https://github.com/shubhamvijaykawde/movie-recommender.git
-cd llm-augmented-movie-recommender
+cd movie-recommender
 
 # Install dependencies
 pip install -r Fast_requirements.txt
