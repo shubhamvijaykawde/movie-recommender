@@ -313,7 +313,7 @@ For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
    - `PYTHON_VERSION`: `3.11.0`
 5. **Deploy!** Wait 5-10 minutes for first deployment
 
-#### Frontend (Hugging Face Spaces)
+#### Frontend(Hugging Face Spaces)
 
 1. **Create a Hugging Face Space** with Streamlit SDK
 2. **Upload `app.py`** to your Space
