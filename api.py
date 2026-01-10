@@ -1,8 +1,10 @@
 # api.py
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 
 from etl import run_etl_pipeline
 
@@ -16,13 +18,30 @@ app = FastAPI(
 )
 
 # -----------------------------
-# Load artifacts ONCE
+# CORS Middleware (for Hugging Face Streamlit frontend)
 # -----------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific Hugging Face app URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# -----------------------------
+# Load artifacts ONCE at startup
+# -----------------------------
+print("🔹 Loading artifacts...")
 artifacts = run_etl_pipeline()
 
 df = artifacts["data"]
 meta_sim = artifacts["meta_sim"]
 desc_embeddings = artifacts["desc_embeddings"]
+
+# Load SentenceTransformer model ONCE (critical for memory optimization)
+print("🔹 Loading SentenceTransformer model...")
+sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
+print("✅ Model loaded successfully!")
 
 title_to_idx = {
     title.lower(): idx
@@ -80,16 +99,8 @@ def recommend_by_title(req: TitleRequest):
 
 @app.post("/recommend/by-query")
 def recommend_by_query(req: QueryRequest):
-    # semantic search only
-    q_emb = cosine_similarity(
-        [req.query], [req.query]
-    )
-
-    q_emb = None  # placeholder for explanation clarity
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    q_emb = model.encode([req.query])
-
+    # Use the pre-loaded model (no reload on each request)
+    q_emb = sentence_model.encode([req.query])
     sims = cosine_similarity(q_emb, desc_embeddings)[0]
     top_idx = np.argsort(sims)[::-1][:req.top_n]
 

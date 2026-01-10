@@ -86,13 +86,30 @@ def precompute_artifacts(csv_path="IMDB-Movie-Data.csv"):
 # 4. Load artifacts (USED BY API)
 # -----------------------------
 def load_artifacts():
+    import os
+    
+    required_files = ["data.pkl", "meta_sim.pkl", "desc_embeddings.pkl"]
+    missing_files = [f for f in required_files if not os.path.exists(f)]
+    
+    if missing_files:
+        raise FileNotFoundError(
+            f"Missing required pickle files: {', '.join(missing_files)}\n"
+            "Please run precompute_artifacts() locally first to generate these files."
+        )
+    
+    print("🔹 Loading data.pkl...")
     with open("data.pkl", "rb") as f:
         df = pickle.load(f)
+    
+    print("🔹 Loading meta_sim.pkl...")
     with open("meta_sim.pkl", "rb") as f:
         meta_sim = pickle.load(f)
+    
+    print("🔹 Loading desc_embeddings.pkl...")
     with open("desc_embeddings.pkl", "rb") as f:
         desc_embeddings = pickle.load(f)
-
+    
+    print("✅ All artifacts loaded successfully!")
     return {
         "data": df,
         "meta_sim": meta_sim,
